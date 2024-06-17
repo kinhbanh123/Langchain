@@ -1,3 +1,4 @@
 langchain
 chainlit
 langchain_community
+python-dotenv

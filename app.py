@@ -1,11 +1,13 @@
 import chainlit as cl
+import os
 from langchain import HuggingFaceHub, PromptTemplate, LLMChain
+from dotenv import load_dotenv
 
 #repo_id = "tiiuae/falcon-7b-instruct" #Better answer
-repo_id = "HuggingFaceH4/zephyr-7b-beta"
+repo_id = "HuggingFaceH4/zephyr-7b-beta" #better than before
 #repo_id = "gpt2-medium" #Questionable answer
-huggingfacehub_api_token = "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" #mytokenread
-#huggingfacehub_api_token = "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" #mytokenwrite
+load_dotenv()
+huggingfacehub_api_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 llm = HuggingFaceHub(huggingfacehub_api_token=huggingfacehub_api_token,
                      repo_id=repo_id,
                      model_kwargs={"temperature":0.7, "max_new_tokens":500})
