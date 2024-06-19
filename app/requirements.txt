@@ -6,4 +6,5 @@ langchainhub
 fastapi 
 uvicorn 
 pydantic
-fastapi
+pypdf
+sentence-transformers
