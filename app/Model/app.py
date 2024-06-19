@@ -22,7 +22,7 @@ chain = LLMChain(prompt=prompt, llm=llm)
 @cl.on_chat_start
 async def main():
     while True:
-        #quétion
+        #question
         res = await cl.AskUserMessage(content="What is your question").send()
         if res:
             # Chạy mô hình để lấy câu trả lời
