@@ -4,6 +4,7 @@ from crawldata import crawl
 from pydantic import BaseModel
 import os
 import shutil
+from typing import List
 
 loaddata()
 # Define FastAPI app
@@ -28,6 +29,7 @@ async def handle_crawl(link: str):
     try:
         file_path = crawl(link)
         return {"message": "Crawling completed", "file_path": file_path}
+        
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -50,3 +52,17 @@ async def delete_pdf(filename: str):
         return {"info": f"file '{filename}' deleted"}
     else:
         raise HTTPException(status_code=404, detail="File not found")
+@app.get("/list-files/", response_model=List[str])
+async def list_files():
+    folder_path = "./data"
+    try:
+        files = os.listdir(folder_path)
+        return files
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+@app.post("/refersh_model/")
+async def refersh_model():
+    try: 
+        loaddata()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

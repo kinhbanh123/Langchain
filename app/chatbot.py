@@ -17,7 +17,7 @@ if not huggingfacehub_api_token:
 repo_id = "HuggingFaceH4/zephyr-7b-beta"
 llm = HuggingFaceHub(huggingfacehub_api_token=huggingfacehub_api_token,
                      repo_id=repo_id,
-                     model_kwargs={"temperature":0.7, "max_new_tokens":1000})
+                     model_kwargs={"temperature":0.2, "max_new_tokens":1000})
 
 template = """Question: {question}
 Answer: Let's give a detailed answer."""
