@@ -52,7 +52,12 @@ embeddings = HuggingFaceEmbeddings()
 doc_search = Chroma.from_documents(docs, embeddings)"""
 
 
+
 retrieval_chain = setup_retrieval_chain()
+
+def loaddata():
+    retrieval_chain = setup_retrieval_chain()
+    
 def get_helpful_answer(question: str) -> str:
     answer = retrieval_chain.run(question)
     pattern = r"Helpful Answer:\s*(.*)"

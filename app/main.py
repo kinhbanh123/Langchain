@@ -1,9 +1,11 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
-from chatbot import get_helpful_answer
+from chatbot import get_helpful_answer, loaddata
+from crawldata import crawl
 from pydantic import BaseModel
 import os
 import shutil
 
+loaddata()
 # Define FastAPI app
 app = FastAPI()
 
@@ -21,9 +23,15 @@ async def chat(question:str):
         return Answer(answer=helpful_answer)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-@app.get("/")
-async def root():
-    return {"message": "Welcome to the Chat API"}
+@app.post("/crawl/")
+async def handle_crawl(link: str):
+    try:
+        file_path = crawl(link)
+        return {"message": "Crawling completed", "file_path": file_path}
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/upload/")
 async def upload_pdf(file: UploadFile = File(...)):
     try:
