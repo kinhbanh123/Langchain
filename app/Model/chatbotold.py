@@ -6,7 +6,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_google_genai import GoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.vectorstores import Chroma #vector store
 from langchain.chains import RetrievalQA
 from langchain.retrievers import BM25Retriever, EnsembleRetriever
@@ -27,8 +27,8 @@ if not GOOGLE_API_KEY:
 repo_id = "HuggingFaceH4/zephyr-7b-beta"
 llm = HuggingFaceHub(huggingfacehub_api_token=huggingfacehub_api_token,
                      repo_id=repo_id,
-                     model_kwargs={"temperature":0.2, "max_new_tokens":1000}) #swap model if you wanna
-"""llm = GoogleGenerativeAI(model="models/text-bison-001", google_api_key=GOOGLE_API_KEY)""" #swap model if you wanna
+                     model_kwargs={"temperature":0.2, "max_new_tokens":1000})
+
 template = """
 <|system|>>
 You are an AI Assistant that follows instructions extremely well.
@@ -44,6 +44,9 @@ CONTEXT: {context}
 <|assistant|>
 """
 ###########################################################################
+"""prompt = PromptTemplate(template=template, input_variables=["question"])
+chain = LLMChain(prompt=prompt, llm=llm)"""
+
 prompt = ChatPromptTemplate.from_template(template)
 output_parser = StrOutputParser()
 
@@ -66,7 +69,7 @@ def setup_retrieval_chain():
     embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     doc_search = Chroma.from_documents(split_docs, embeddings)
     #return RetrievalQA.from_chain_type(llm, chain_type='stuff', retriever=doc_search.as_retriever())
-    retriever_vectordb = doc_search.as_retriever(search_kwargs={"k": 2})     
+    retriever_vectordb = doc_search.as_retriever(search_kwargs={"k": 2})
     keyword_retriever = BM25Retriever.from_documents(split_docs)
     keyword_retriever.k =  2
     return  EnsembleRetriever(retrievers=[retriever_vectordb,keyword_retriever],
@@ -93,9 +96,8 @@ chain = (
 def get_helpful_answer(question: str) -> str:
     
     answer = chain.invoke(question)  
-    return answer # show all docs
-    """if answer and isinstance(answer, str):
+    if answer and isinstance(answer, str):
         last_newline_index = answer.rfind('>\n')
         if last_newline_index != -1:
             return answer[last_newline_index + 1:].strip()
-    """
+    return answer

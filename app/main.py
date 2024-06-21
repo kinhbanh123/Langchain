@@ -24,6 +24,7 @@ async def chat(question:str):
         return Answer(answer=helpful_answer)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/crawl/")
 async def handle_crawl(link: str):
     try:
