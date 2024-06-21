@@ -8,4 +8,4 @@ uvicorn
 pydantic
 pypdf
 sentence-transformers
-reportlab
+langchain_google_genai
