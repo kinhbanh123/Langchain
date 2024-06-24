@@ -26,7 +26,8 @@ def crawl(url: str) -> str:
 
         # Lấy tiêu đề của trang từ URL
         page_title = url.split('/')[-1]
-
+        if '*' in page_title:
+            page_title = page_title.replace('*', 'asterisk')
         # Tạo đường dẫn đầy đủ đến file
         file_path = os.path.join("./data/", page_title + ".pdf")
         pdf_document = SimpleDocTemplate(file_path)

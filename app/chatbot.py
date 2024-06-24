@@ -12,8 +12,9 @@ from langchain.chains import RetrievalQA
 from langchain.retrievers import BM25Retriever, EnsembleRetriever
 from langchain.text_splitter import RecursiveCharacterTextSplitter  
 from dotenv import load_dotenv
+import pickle
 import re
-
+###########################################################################
 load_dotenv() #Load something secret
 huggingfacehub_api_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -33,9 +34,7 @@ template = """
 <|system|>>
 You are an AI Assistant that follows instructions extremely well.
 Please be truthful and give direct answers. Please tell 'I don't know' if user query is not in CONTEXT
-
 Keep in mind, you will lose the job, if you answer out of CONTEXT questions
-
 CONTEXT: {context}
 </s>
 <|user|>
@@ -46,7 +45,18 @@ CONTEXT: {context}
 ###########################################################################
 prompt = ChatPromptTemplate.from_template(template)
 output_parser = StrOutputParser()
-
+###########################################################################
+def load_single_pdf(file_path: str):
+    if not file_path.endswith(".pdf"):
+        raise ValueError("File is not a PDF")
+    
+    if not os.path.isfile(file_path):
+        raise ValueError("File does not exist")
+    
+    loader = PyPDFLoader(file_path)
+    pages = loader.load()
+    return pages #tra ve thong tin cua trang #lay ten va id vao mot pdf
+###########################################################################
 #Load all pdf
 def load_all_pdfs_from_folder(folder_path: str):
     documents = []
@@ -56,18 +66,61 @@ def load_all_pdfs_from_folder(folder_path: str):
             loader = PyPDFLoader(pdf_path)
             pages = loader.load()
             documents.extend(pages)
-    return documents
-
-def setup_retrieval_chain():
-    folder_path = "./data"
-    docs = load_all_pdfs_from_folder(folder_path)
+    return documents #tra ve thong tin cua nhieu trang lay ten va id vao mot pdf
+###########################################################################
+def load_split_docs(db_path="./data/"):
+    with open(os.path.join(db_path, "split_docs.pkl"), "rb") as f:
+        split_docs = pickle.load(f)
+    return split_docs #load file split cho setup
+###########################################################################
+def add_documents_to_chroma(docs, db_path="./data/"):
+    # Split documents
     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=20)
     split_docs = splitter.split_documents(docs)
+    
+    # Save split_docs using pickle
+    with open(os.path.join(db_path, "split_docs.pkl"), "wb") as f:
+        pickle.dump(split_docs, f)
+    
+    # Create embeddings
     embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
-    doc_search = Chroma.from_documents(split_docs, embeddings)
+    
+    # Initialize or load existing Chroma DB
+    if os.path.exists(db_path):
+        try:
+            doc_search = Chroma.load(db_path, embeddings)
+        except:
+            doc_search = Chroma.from_documents(split_docs, embeddings)
+    else:
+        doc_search = Chroma.from_documents(split_docs, embeddings)
+    doc_search.add_documents(split_docs)
+###########################################################################
+def delete_documents_from_chroma(doc_ids, db_path="./data/"): #Chua xong
+    # Load existing Chroma DB
+    doc_search = Chroma.load(db_path)
+    # Delete documents by IDs
+    doc_search.delete(doc_ids)
+    # Save Chroma DB
+    doc_search.save("my_chroma_db")
+###########################################################################
+# Tải ChromaDB
+def load_chroma_db():
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    return Chroma(persist_directory="./data/chroma_db", embedding_function=embeddings)
+
+###########################################################################
+def setup_retrieval_chain():
+    #folder_path = "./data"
+    #docs = load_all_pdfs_from_folder(folder_path)
+    #splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=20)
+    #split_docs = splitter.split_documents(docs)
+    """embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    doc_search = Chroma.from_documents(split_docs, embeddings)"""
+    db_path = "./data/vectordb"
+    doc_search = load_chroma_db()
     #return RetrievalQA.from_chain_type(llm, chain_type='stuff', retriever=doc_search.as_retriever())
     retriever_vectordb = doc_search.as_retriever(search_kwargs={"k": 2})     
-    keyword_retriever = BM25Retriever.from_documents(split_docs)
+    keyword_retriever = BM25Retriever.from_documents(load_split_docs())
     keyword_retriever.k =  2
     return  EnsembleRetriever(retrievers=[retriever_vectordb,keyword_retriever],
                                        weights=[0.5, 0.5])
@@ -78,6 +131,9 @@ docs = splitter.split_documents(pages)
 embeddings = HuggingFaceEmbeddings()
 doc_search = Chroma.from_documents(docs, embeddings)"""
 
+#docs = load_all_pdfs_from_folder("./data")
+docs = load_single_pdf("./data/asteriskNamirin.pdf")
+add_documents_to_chroma(docs)
 retrieval_chain = setup_retrieval_chain()
 
 def loaddata():
@@ -93,9 +149,10 @@ chain = (
 def get_helpful_answer(question: str) -> str:
     
     answer = chain.invoke(question)  
-    return answer # show all docs
-    """if answer and isinstance(answer, str):
+    
+    if answer and isinstance(answer, str):
         last_newline_index = answer.rfind('>\n')
         if last_newline_index != -1:
             return answer[last_newline_index + 1:].strip()
-    """
+    return answer # show all docs
+
