@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
-from chatbot import get_helpful_answer, loaddata
+from chatbot import get_helpful_answer, loaddata , load_single_pdf, delete_entry , add_documents_to_chroma
 from crawldata import crawl
 from pydantic import BaseModel
 import os
@@ -41,6 +41,7 @@ async def upload_pdf(file: UploadFile = File(...)):
         file_location = f"./data/{file.filename}"
         with open(file_location, "wb+") as file_object:
             shutil.copyfileobj(file.file, file_object)
+        add_documents_to_chroma(load_single_pdf(file_location))
         return {"info": f"file '{file.filename}' saved at '{file_location}'"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
