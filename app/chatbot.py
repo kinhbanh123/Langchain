@@ -6,13 +6,13 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_google_genai import GoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import OpenAI
 from langchain.vectorstores import Chroma #vector store
 from langchain.chains import RetrievalQA
 from langchain.retrievers import BM25Retriever, EnsembleRetriever
 from langchain.text_splitter import RecursiveCharacterTextSplitter  
-
-from langchain_core.messages import HumanMessage
+from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from dotenv import load_dotenv
 import pickle
 import re
@@ -21,24 +21,29 @@ import csv
 load_dotenv() #Load something secret
 huggingfacehub_api_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"] 
 if not huggingfacehub_api_token:
     raise ValueError("HUGGINGFACEHUB_API_TOKEN is not set in the environment")
 if not GOOGLE_API_KEY:
     raise ValueError("GOOGLE_API_KEY is not set in the enviroment")
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY is not set in the enviroment")
 # Set up the Google model
-#llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=GOOGLE_API_KEY )
+#llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=GOOGLE_API_KEY , streaming=True)
+llm = OpenAI(openai_api_key=OPENAI_API_KEY,temperature=0.1, streaming=True)
 # Set up the HuggingFace model
 repo_id = "HuggingFaceH4/zephyr-7b-beta"
-llm = HuggingFaceHub(huggingfacehub_api_token=huggingfacehub_api_token,
-                     repo_id=repo_id,
-                     model_kwargs={"temperature":0.01, "max_new_tokens":1000} ) #swap model if you wanna
-"""llm = GoogleGenerativeAI(model="models/text-bison-001", google_api_key=GOOGLE_API_KEY)""" #swap model if you wanna
+"""llm = HuggingFaceHub(huggingfacehub_api_token=huggingfacehub_api_token,
+                    repo_id=repo_id,
+                   model_kwargs={"temperature":0.01, "max_new_tokens":1000},
+                   streaming=True) #swap model if you wanna"""
+
 template = """
 <|system|>>
 You are an AI Assistant that follows instructions extremely well.
-Please be truthful and give direct answers. Please tell 'I don't know' if user query is not in CONTEXT
+Please be truthful and give direct answers.
 Keep in mind, you will lose the job, if you answer out of CONTEXT questions
-CONTEXT: {context}
+CONTEXT: {context} 
 </s>
 <|user|>
 {query}
@@ -211,5 +216,7 @@ def get_helpful_answer(question: str) -> str:
 
 
 question = "Write me a poem about Namirin"
-for chunk in chain.stream(question):
-    print(chunk)
+async def generate_chat_responses(message):
+    async for chunk in chain.astream(message):
+        content = chunk.replace("\n", "<br>")
+        yield f"data: {content}\n\n"

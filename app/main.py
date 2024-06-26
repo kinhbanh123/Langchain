@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
-from chatbot import get_helpful_answer, loaddata , load_single_pdf, delete_entry , add_documents_to_chroma
+from chatbot import get_helpful_answer, loaddata, chain, load_single_pdf, delete_entry , add_documents_to_chroma, generate_chat_responses
+from fastapi.responses import StreamingResponse, FileResponse
 from crawldata import crawl
 from pydantic import BaseModel
 import os
@@ -34,7 +35,6 @@ async def handle_crawl(link: str):
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.post("/upload/")
 async def upload_pdf(file: UploadFile = File(...)):
     try:
@@ -45,7 +45,6 @@ async def upload_pdf(file: UploadFile = File(...)):
         return {"info": f"file '{file.filename}' saved at '{file_location}'"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 @app.delete("/delete/")
 async def delete_pdf(filename: str):
     file_path = f"./data/{filename}"
@@ -62,9 +61,21 @@ async def list_files():
         return files
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
 @app.post("/refersh_model/")
 async def refersh_model():
     try: 
         loaddata()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@app.get("/")
+async def root():
+    return FileResponse("static/index.html")
+
+
+@app.get("/chat_stream/{message}")
+async def chat_stream(message: str):
+    return StreamingResponse(generate_chat_responses(message=message), media_type="text/event-stream")

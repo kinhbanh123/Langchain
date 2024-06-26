@@ -45,3 +45,5 @@ def crawl(url: str) -> str:
         return file_path  # Trả về đường dẫn của file đã lưu
     except requests.exceptions.RequestException as e:
         raise RuntimeError(f"Failed to fetch URL: {str(e)}")
+
+    
