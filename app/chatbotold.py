@@ -8,9 +8,7 @@ from langchain.embeddings import HuggingFaceEmbeddings
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import OpenAI
-#from langchain.vectorstores import Chroma #vector store
-import weaviate #vector store
-from langchain_weaviate.vectorstores import WeaviateVectorStore
+from langchain.vectorstores import Chroma #vector store
 from langchain.chains import RetrievalQA
 from langchain.retrievers import BM25Retriever, EnsembleRetriever
 from langchain.text_splitter import RecursiveCharacterTextSplitter  
@@ -19,7 +17,6 @@ from dotenv import load_dotenv
 import pickle
 import re
 import csv
-from weaviate import classes as wvc
 ###########################################################################
 load_dotenv() #Load something secret
 huggingfacehub_api_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
@@ -43,7 +40,7 @@ repo_id = "HuggingFaceH4/zephyr-7b-beta"
 
 template = """
 <|system|>>
-You are an anime girl AI Assistant that follows instructions extremely well.
+You are an AI Assistant that follows instructions extremely well.
 Please be truthful and give direct answers.
 Keep in mind, you will lose the job, if you answer out of CONTEXT questions
 CONTEXT: {context} 
@@ -55,45 +52,26 @@ CONTEXT: {context}
 """
 ###########################################################################
 prompt = ChatPromptTemplate.from_template(template)
-# Set these environment variables
-URL = "https://langchainlearn-1x0cyj2w.weaviate.network"
-APIKEY = "RqZAcXk3do3U6ihpQtDYnNubuyEaktLBWRuu"
-# Connect to a WCS instance
-client = weaviate.connect_to_wcs(
-    cluster_url=URL,
-    auth_credentials=weaviate.auth.AuthApiKey(APIKEY))
-
 global embeddings
 embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 output_parser = StrOutputParser()
 csv_path = "./data/file_to_id.csv"
-global name_data
-name_data = "vector_db"
-global collection
-collection = client.collections.get(name_data)
-###########################################################################
-def createNewCollection():
-    client.collections.delete(name_data)
-    # lets make sure its vectorizer is what the one we want
-    collection = client.collections.create(
-    name=name_data,
-    vectorizer_config=wvc.config.Configure.Vectorizer.text2vec_openai(),
-    generative_config=wvc.config.Configure.Generative.openai(),)
-###########################################################################
 
-###########################################################################
 ###########################################################################
 def load_single_pdf(file_path: str):
     if not file_path.endswith(".pdf"):
         raise ValueError("File is not a PDF")
     if not os.path.isfile(file_path):
         raise ValueError("File does not exist")
-    ids = []
     loader = PyPDFLoader(file_path)
     pages = loader.load()
-    name = file_path.split('/')[-1]
-
-    # Read existing file-to-id mappings
+    doc_search = Chroma.from_documents(pages, embeddings)
+    document_ids = doc_search.get()["ids"]
+    document_ids = doc_search.get()["ids"]
+    print("Document IDs:", document_ids)
+    # Convert the document IDs to a single string with comma-separated values
+    ids_str = ",".join(document_ids)
+    # Read the existing file-to-id mappings
     file_to_id = {}
     if os.path.exists(csv_path):
         with open(csv_path, mode="r", newline='', encoding='utf-8') as csvfile:
@@ -101,22 +79,14 @@ def load_single_pdf(file_path: str):
             for row in reader:
                 if len(row) == 2:
                     file_to_id[row[0]] = row[1]
-    
-    # Check if file name already exists in CSV
-    if name in file_to_id:
-        print(f"File {name} already exists in the CSV. Skipping.")
-        return pages  # Return the pages without further processing
-
-    doc_search = WeaviateVectorStore.from_documents(pages, embedding=embeddings, client=client,index_name=name_data)
-    for item in collection.iterator(include_vector=True):
-        uuid_str = str(item.uuid)  # Convert UUID to string for comparison
-        if not any(uuid_str in str(file_to_id) for file_to_id in file_to_id.values()):
-            ids.append(item.uuid)
-    print(ids)
-    file_to_id[name] = ids
-    with open(csv_path, mode="a", newline='', encoding='utf-8') as csvfile:  # Use "a" mode to append new entries
+    if file_path in file_to_id:
+        print(f"File {file_path} already exists in the CSV. Overwriting entry.")
+    file_to_id[file_path] = ids_str
+    # Write the updated mappings back to the CSV file
+    with open(csv_path, mode="w", newline='', encoding='utf-8') as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow([name, ids])
+        for file, ids in file_to_id.items():
+            writer.writerow([file, ids])
     return pages
 ###########################################################################
 #Load all pdf
@@ -128,77 +98,105 @@ def load_all_pdfs_from_folder(folder_path: str):
             loader = PyPDFLoader(pdf_path)
             pages = loader.load()
             documents.extend(pages)
-    doc_search = WeaviateVectorStore.from_documents(pages, embedding=embeddings, client=client,index_name=name_data)
-    print(f'You have {len(documents)} documents in your data')
-    print(f'There are {len(documents[0].page_content)} characters in your document')
-    return documents #chua can toi
+    return documents #tra ve thong tin cua nhieu trang lay ten va id vao mot pdf
 ###########################################################################
 def load_split_docs(db_path="./data/"):
     with open(os.path.join(db_path, "split_docs.pkl"), "rb") as f:
         split_docs = pickle.load(f)
     return split_docs #load file split cho setup
 ###########################################################################
-def CreateSplitDocs(db_path="./data/"):
+def add_documents_to_chroma(docs, db_path="./data/"):
     # Split documents
-    docs = LoadDocs()
     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=20)
     split_docs = splitter.split_documents(docs)
     # Save split_docs using pickle
     with open(os.path.join(db_path, "split_docs.pkl"), "wb") as f:
         pickle.dump(split_docs, f)
+    # Create embeddings
+    #embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    doc_search = Chroma.from_documents(split_docs, embeddings,persist_directory="./data/chroma_db")
+    doc_search.add_documents(split_docs)
+"""    # Initialize or load existing Chroma DB
+    if os.path.exists(db_path):
+        try:
+            doc_search = Chroma.load(db_path, embeddings)
+        except:
+            doc_search = Chroma.from_documents(split_docs, embeddings)
+    else:"""
+    
 ###########################################################################
-def LoadDocs(db_path="./data/",csv_path = "./data/file_to_id.csv"):
-    docs = []
-    with open(csv_path, 'r') as csvfile:
-        reader = csv.reader(csvfile)
-        for row in reader:
-            if len(row) >= 2:
-                filename = row[0]  # Tên file PDF
-                pdf_path = os.path.join(db_path, filename)
-                loader = PyPDFLoader(pdf_path)
-                pages = loader.load()
-                docs.extend(pages)
-    return docs
-##########################################################################
-def delete_entry_from_csv(file_name, csv_path = "./data/file_to_id.csv"):
-    # Đọc dữ liệu từ file CSV vào một từ điển file_to_id
+def delete_entry(file_path: str):
+    # Đọc nội dung hiện tại của file-to-id CSV
     file_to_id = {}
-    with open(csv_path, mode="r", newline='', encoding='utf-8') as csvfile:
-        reader = csv.reader(csvfile)
-        for row in reader:
-            if len(row) == 2:
-                file_to_id[row[0]] = row[1]
-    # Kiểm tra xem file_name có trong từ điển không
-    if file_name in file_to_id:
-        # Lấy doc_id tương ứng
-        doc_id = file_to_id.pop(file_name)
-        print(f"Deleted entry for {file_name} with ID: {doc_id}")
+    if os.path.exists(csv_path):
+        with open(csv_path, mode="r", newline='', encoding='utf-8') as csvfile:
+            reader = csv.reader(csvfile)
+            for row in reader:
+                if len(row) == 2:
+                    file_to_id[row[0]] = row[1]
+    # Kiểm tra xem file_path có trong từ điển không
+    if file_path in file_to_id:
+        # Lấy danh sách document IDs
+        document_ids = file_to_id[file_path].split(',')
+
+        # Tải Chroma DB
+        doc_search = load_chroma_db()
+
+        # Xóa các document IDs khỏi Chroma DB
+        for doc_id in document_ids:
+            doc_search.delete([doc_id])
+        doc_search(persist_directory="./data/chroma_db", embedding_function=embeddings)
+        # Xóa mục từ từ điển
+        del file_to_id[file_path]
+        print(f"Entry for {file_path} deleted from CSV and Chroma DB.")
     else:
-        print(f"Entry for {file_name} not found in CSV.")
-    collection.data.delete_by_id(doc_id)
-    # Ghi lại các cặp tên file và ID còn lại vào file CSV
+        print(f"Entry for {file_path} not found in CSV.")
+
+    # Ghi lại các ánh xạ đã cập nhật vào file CSV
     with open(csv_path, mode="w", newline='', encoding='utf-8') as csvfile:
         writer = csv.writer(csvfile)
         for file, ids in file_to_id.items():
             writer.writerow([file, ids])
+
+    print(f"File {csv_path} was successfully updated.")
+###########################################################################
+# Tải ChromaDB
+def load_chroma_db():
+    #embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    return Chroma(persist_directory="./data/chroma_db", embedding_function=embeddings)
+
 ###########################################################################
 def setup_retrieval_chain():
-    #docs = load_single_pdf("./data/IRyS.pdf")
-    docs = LoadDocs()
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=20)
-    split_docs = splitter.split_documents(docs)
-    vs=WeaviateVectorStore(client=client,index_name=name_data,embedding=embeddings,text_key="text")
-    return vs.as_retriever(search_kwargs={"k": 2})
-###########################################################################
+    #folder_path = "./data"
+    #docs = load_all_pdfs_from_folder(folder_path)
+    #splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=20)
+    #split_docs = splitter.split_documents(docs)
+    """embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    doc_search = Chroma.from_documents(split_docs, embeddings)"""
+    db_path = "./data/vectordb"
+    doc_search = load_chroma_db()
+    #return RetrievalQA.from_chain_type(llm, chain_type='stuff', retriever=doc_search.as_retriever())
+    retriever_vectordb = doc_search.as_retriever(search_kwargs={"k": 2})     
+    keyword_retriever = BM25Retriever.from_documents(load_split_docs())
+    keyword_retriever.k =  2
+    return  EnsembleRetriever(retrievers=[retriever_vectordb,keyword_retriever],
+                                       weights=[0.5, 0.5])
+"""loader = PyPDFLoader("./data/Hololive Production.pdf")
+pages = loader.load()
+splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=20)
+docs = splitter.split_documents(pages)
+embeddings = HuggingFaceEmbeddings()
+doc_search = Chroma.from_documents(docs, embeddings)"""
+
+#docs = load_all_pdfs_from_folder("./data")
+#docs = load_single_pdf("./data/IRyS.pdf")
+#delete_entry("./data/AZKi.pdf")
+#add_documents_to_chroma(docs)
+retrieval_chain = setup_retrieval_chain()
+
 def loaddata():
-    vs = setup_retrieval_chain()
-#############################################################################
-async def generate_chat_responses(message):
-    chain = createChain(message)
-    async for chunk in chain.astream(message):
-        content = chunk.replace("\n", "<br>")
-        yield f"data: {content}\n\n"
-#############################################################################
+    retrieval_chain = setup_retrieval_chain()
+
 def createChain(question):
     vs = setup_retrieval_chain()
     vs.get_relevant_documents(question)
@@ -213,33 +211,21 @@ def createChain(question):
         | llm
         | output_parser )
     return chain
-load_single_pdf("./data/asteriskNamirin.pdf")
-CreateSplitDocs()
-"""createNewCollection()
-for item in collection.iterator(include_vector=True):
-    print(item.uuid)
-load_single_pdf("./data/AZKi.pdf")
-for item in collection.iterator(include_vector=True):
-    print(item.uuid)
-load_single_pdf("./data/AZKi.pdf")
-for item in collection.iterator(include_vector=True):
-    print(item.uuid)
-delete_entry_from_csv("IRyS.pdf", csv_path)
-for item in collection.iterator(include_vector=True):
-    print(item.uuid)"""
-#generate_chat_responses("What is the famous song of Namirin")
-"""for item in collection.iterator(include_vector=True):
-    print(item.uuid)
-delete_entry_from_csv("IRyS.pdf", csv_path)
-"""
-
-
-def get_helpful_answer(question: str) -> str:
-    chain = createChain(question)
+    
+"""def get_helpful_answer(question: str) -> str:
+    
     answer = chain.invoke(question)  
     
     if answer and isinstance(answer, str):
         last_newline_index = answer.rfind('>\n')
         if last_newline_index != -1:
             return answer[last_newline_index + 1:].strip()
-    return answer # show all docs
+    return answer # show all docs"""
+
+
+question = "Write me a poem about Namirin"
+async def generate_chat_responses(message):
+    chain = createChain(message)
+    async for chunk in chain.astream(message):
+        content = chunk.replace("\n", "<br>")
+        yield f"data: {content}\n\n"

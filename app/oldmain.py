@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
-from chatbot import  loaddata, load_single_pdf, generate_chat_responses
+from oldchatbot import get_helpful_answer, loaddata, chain, load_single_pdf, delete_entry , add_documents_to_chroma, generate_chat_responses
 from fastapi.responses import StreamingResponse, FileResponse
 from crawldata import crawl
 from pydantic import BaseModel
@@ -18,6 +18,13 @@ class Question(BaseModel):
 class Answer(BaseModel):
     answer: str
 
+@app.post("/chat/", response_model=Answer)
+async def chat(question:str):
+    try:
+        helpful_answer = get_helpful_answer(question)
+        return Answer(answer=helpful_answer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/crawl/")
 async def handle_crawl(link: str):
@@ -38,14 +45,14 @@ async def upload_pdf(file: UploadFile = File(...)):
         return {"info": f"file '{file.filename}' saved at '{file_location}'"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-"""@app.delete("/delete/")
+@app.delete("/delete/")
 async def delete_pdf(filename: str):
     file_path = f"./data/{filename}"
     if os.path.exists(file_path):
         os.remove(file_path)
         return {"info": f"file '{filename}' deleted"}
     else:
-        raise HTTPException(status_code=404, detail="File not found")"""
+        raise HTTPException(status_code=404, detail="File not found")
 @app.get("/list-files/", response_model=List[str])
 async def list_files():
     folder_path = "./data"
