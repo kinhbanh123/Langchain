@@ -1,4 +1,10 @@
 langchain
+langchain_openai
+langchain_google_genai
+weaviate-client
+langchain_weaviate
+langchain_core
+psycopg2-binary
 huggingface_hub
 langchain_community
 python-dotenv
@@ -8,4 +14,5 @@ uvicorn
 pydantic
 pypdf
 sentence-transformers
-langchain_google_genai
+bs4
+reportlab
